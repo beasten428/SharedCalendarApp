@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SharedCalendar</string>
+    <string name="title_activity_main">SharedCalendar</string>
+    <string name="package_name">com.sharedcalendar.app</string>
+    <string name="custom_url_scheme">com.sharedcalendar.app</string>
+</resources>

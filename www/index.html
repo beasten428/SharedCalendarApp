@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Shared Calendar</title>
+    <!-- PWA Setup -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a73e8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- FullCalendar CSS and JS -->
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js'></script>
+    <!-- Socket.io -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #fff; padding: 20px; }
+        #calendar-container { max-width: 900px; margin: 40px auto; background: white; color: black; padding: 20px; border-radius: 8px; }
+        /* Light mode support for calendar */
+        .fc { font-family: sans-serif; }
+        .auth-bar { max-width: 900px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 8px 16px; border-radius: 4px; text-decoration: none; font-weight: bold; }
+        .btn-login { background-color: #4285f4; color: white; }
+        .btn-logout { background-color: #333; color: white; border: 1px solid #555; }
+        .sync-badge { background-color: #0f9d58; color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8em; }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1a73e8;
+            --primary-hover: #174ea6;
+            --bg-color: #f1f3f4;
+            --surface-color: #ffffff;
+            --text-color: #202124;
+            --border-radius: 12px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        body { 
+            font-family: 'Google Sans', sans-serif; 
+            background: var(--bg-color); 
+            color: var(--text-color); 
+            margin: 0; 
+            padding: 0; 
+            padding-bottom: 80px; /* space for FAB */
+        }
+        
+        header {
+            background: var(--surface-color);
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        h1 { margin: 0; font-size: 1.5rem; font-weight: 500; color: #3c4043; }
+
+        .btn { 
+            padding: 10px 16px; 
+            border-radius: 8px; 
+            text-decoration: none; 
+            font-weight: 500; 
+            border: none;
+            cursor: pointer;
+            font-family: 'Google Sans', sans-serif;
+            font-size: 0.9rem;
+        }
+        .btn-login { background-color: var(--primary); color: white; }
+        .btn-logout { background-color: transparent; color: #5f6368; border: 1px solid #dadce0; }
+        .sync-badge { background-color: #e6f4ea; color: #137333; padding: 6px 12px; border-radius: 16px; font-size: 0.85em; font-weight: 500; }
+
+        #calendar-container { 
+            max-width: 1000px; 
+            margin: 20px auto; 
+            background: var(--surface-color); 
+            padding: 16px; 
+            border-radius: var(--border-radius); 
+            box-shadow: var(--shadow); 
+        }
+
+        /* FullCalendar Customizations */
+        .fc { font-family: 'Google Sans', sans-serif; }
+        .fc-theme-standard td, .fc-theme-standard th { border-color: #dadce0; }
+        .fc-header-toolbar { flex-wrap: wrap; gap: 10px; }
+        .fc-button-primary {
+            background-color: var(--surface-color) !important;
+            color: #5f6368 !important;
+            border: 1px solid #dadce0 !important;
+            border-radius: 8px !important;
+            text-transform: capitalize !important;
+        }
+        .fc-button-primary:hover { background-color: #f8f9fa !important; }
+        .fc-button-active { background-color: #e8f0fe !important; color: var(--primary) !important; border-color: var(--primary) !important; }
+        .fc-event { border-radius: 4px; border: none; padding: 2px 4px; font-size: 0.85em; background-color: #4285f4; }
+        .fc-toolbar-title { font-size: 1.25em !important; font-weight: 500; color: #3c4043; }
+        
+        /* Floating Action Button */
+        .fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            background-color: var(--surface-color);
+            color: var(--text-color);
+            border-radius: 16px; /* Google Material 3 squircle */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+            cursor: pointer;
+            z-index: 1000;
+            border: none;
+            transition: box-shadow 0.2s, background-color 0.2s;
+        }
+        .fab:hover {
+            box-shadow: 0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23);
+            background-color: #f8f9fa;
+        }
+
+        .fab svg { width: 36px; height: 36px; fill: currentColor; }
+
+        /* Dialog Modal */
+        dialog {
+            border: none;
+            border-radius: var(--border-radius);
+            box-shadow: 0 24px 38px 3px rgba(0,0,0,0.14), 0 9px 46px 8px rgba(0,0,0,0.12), 0 11px 15px -7px rgba(0,0,0,0.2);
+            padding: 24px;
+            width: 90%;
+            max-width: 400px;
+            background: var(--surface-color);
+            color: var(--text-color);
+        }
+        dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+        dialog h2 { margin-top: 0; font-weight: 500; font-size: 1.25rem; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #5f6368; }
+        .form-group input { 
+            width: 100%; 
+            padding: 10px; 
+            border: 1px solid #dadce0; 
+            border-radius: 4px; 
+            font-family: inherit;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+        .dialog-actions button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-family: inherit; font-weight: 500; }
+        .btn-cancel { background: transparent; color: #5f6368; }
+        .btn-save { background: var(--primary); color: white; }
+
+        /* Mobile specific */
+        @media (max-width: 768px) {
+            #calendar-container { margin: 0; border-radius: 0; box-shadow: none; padding: 8px; }
+            .fc-header-toolbar { flex-direction: column; align-items: flex-start; }
+            .fc-toolbar-chunk { margin-bottom: 8px; }
+            .fab { bottom: 16px; right: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Calendar</h1>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <a href="https://ian-pi.tail3328b2.ts.net:10000/login" class="btn btn-login" id="login-btn">Login with Google</a>
+        </div>
+    </header>
+
+    <div id='calendar-container'>
+        <div id='calendar'></div>
+    </div>
+
+    <button class="fab" id="fab-add" aria-label="Add Event">
+        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+    </button>
+
+    <dialog id="event-dialog">
+        <h2>Add Event</h2>
+        <div class="form-group">
+            <label for="event-title">Title</label>
+            <input type="text" id="event-title" placeholder="Add title" autocomplete="off">
+        </div>
+        <div class="form-group">
+            <label for="event-start">Start Date/Time</label>
+            <input type="datetime-local" id="event-start">
+        </div>
+        <div class="form-group">
+            <label for="event-end">End Date/Time</label>
+            <input type="datetime-local" id="event-end">
+        </div>
+        <div class="dialog-actions">
+            <button class="btn-cancel" id="btn-cancel">Cancel</button>
+            <button class="btn-save" id="btn-save">Save</button>
+        </div>
+    </dialog>
+
+    <script>
+        const socket = io('https://ian-pi.tail3328b2.ts.net:10000');
+        let calendar;
+
+        const dialog = document.getElementById('event-dialog');
+        const titleInput = document.getElementById('event-title');
+        const startInput = document.getElementById('event-start');
+        const endInput = document.getElementById('event-end');
+
+        socket.on('connect', () => {
+            socket.emit('get_events');
+        });
+
+        socket.on('load_events', (events) => {
+            calendar.removeAllEvents();
+            events.forEach(evt => calendar.addEvent(evt));
+        });
+
+        socket.on('event_added', (data) => {
+            if (!calendar.getEventById(data.id)) {
+                calendar.addEvent({
+                    id: data.id,
+                    title: data.title,
+                    start: data.start,
+                    end: data.end,
+                    allDay: data.allDay
+                });
+            }
+        });
+
+        socket.on('event_deleted', (data) => {
+            let evt = calendar.getEventById(data.id);
+            if (evt) {
+                evt.remove();
+            }
+        });
+
+        function openDialog(startStr, endStr) {
+            titleInput.value = '';
+            
+            // Format for datetime-local input (YYYY-MM-DDThh:mm)
+            if (startStr) {
+                // If it's an all-day date, add time
+                if (startStr.length <= 10) startStr += "T09:00";
+                startInput.value = startStr.substring(0, 16);
+            } else {
+                startInput.value = new Date().toISOString().substring(0, 16);
+            }
+            
+            if (endStr) {
+                if (endStr.length <= 10) endStr += "T10:00";
+                endInput.value = endStr.substring(0, 16);
+            } else {
+                let d = new Date(startInput.value || new Date());
+                d.setHours(d.getHours() + 1);
+                endInput.value = d.toISOString().substring(0, 16);
+            }
+            
+            dialog.showModal();
+        }
+
+        document.getElementById('fab-add').addEventListener('click', () => {
+            openDialog();
+        });
+
+        document.getElementById('btn-cancel').addEventListener('click', () => {
+            dialog.close();
+            calendar.unselect();
+        });
+
+        document.getElementById('btn-save').addEventListener('click', () => {
+            const title = titleInput.value.trim();
+            if (!title) {
+                alert("Please enter a title");
+                return;
+            }
+            
+            const newEvent = {
+                id: String(Date.now()),
+                title: title,
+                start: startInput.value,
+                end: endInput.value,
+                allDay: false
+            };
+            
+            calendar.addEvent(newEvent);
+            socket.emit('new_event', newEvent);
+            dialog.close();
+            calendar.unselect();
+        });
+
+        // Close dialog on backdrop click
+        dialog.addEventListener('click', (e) => {
+            if (e.target === dialog) {
+                dialog.close();
+                calendar.unselect();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            
+            // Check screen width to set default view
+            let isMobile = window.innerWidth < 768;
+            
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: isMobile ? 'listWeek' : 'timeGridWeek',
+                height: 'auto',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: isMobile ? 'listWeek,timeGridDay' : 'dayGridMonth,timeGridWeek,timeGridDay'
+                },
+                editable: true,
+                selectable: true,
+                selectMirror: true,
+                dayMaxEvents: true,
+                buttonText: {
+                    today: 'Today',
+                    month: 'Month',
+                    week: 'Week',
+                    day: 'Day',
+                    list: 'Agenda'
+                },
+                select: function(arg) {
+                    openDialog(arg.startStr, arg.endStr);
+                },
+                eventClick: function(arg) {
+                    if (confirm(`Delete "${arg.event.title}"?`)) {
+                        const id = arg.event.id;
+                        arg.event.remove();
+                        socket.emit('delete_event', { id: id });
+                    }
+                },
+                windowResize: function(arg) {
+                    let mobileNow = window.innerWidth < 768;
+                    if (mobileNow !== isMobile) {
+                        isMobile = mobileNow;
+                        if (isMobile) {
+                            calendar.changeView('listWeek');
+                            calendar.setOption('headerToolbar', {
+                                left: 'prev,next today',
+                                center: 'title',
+                                right: 'listWeek,timeGridDay'
+                            });
+                        } else {
+                            calendar.changeView('timeGridWeek');
+                            calendar.setOption('headerToolbar', {
+                                left: 'prev,next today',
+                                center: 'title',
+                                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                            });
+                        }
+                    }
+                }
+            });
+            calendar.render();
+        });
+
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js').then(registration => {
+                    console.log('SW registered: ', registration);
+                }).catch(registrationError => {
+                    console.log('SW registration failed: ', registrationError);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
